@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "eu.kanade.tachiyomi.extension.en.pornhwadb"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "eu.kanade.tachiyomi.extension.en.pornhwadb"
         // Mihon requires extensions to match the host app's minSdk floor.
         minSdk = 23
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
     }
 
