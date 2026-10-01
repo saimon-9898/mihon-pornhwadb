@@ -21,9 +21,9 @@ jobs:
       # instead. Pinning the version keeps the build reproducible either way.
       - name: Install Gradle
         run: |
-          curl -sSLo gradle.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          curl -sSLo gradle.zip https://services.gradle.org/distributions/gradle-8.14-bin.zip
           unzip -q gradle.zip -d "$HOME"
-          echo "$HOME/gradle-8.11.1/bin" >> "$GITHUB_PATH"
+          echo "$HOME/gradle-8.14/bin" >> "$GITHUB_PATH"
 
       - uses: android-actions/setup-android@v3
         with:
