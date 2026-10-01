@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="tachiyomi.extension" />
+
+    <application>
+        <meta-data android:name="tachiyomix.name" android:value="Pornhwa DB" />
+        <!-- 0 = Safe, 1 = Mixed, 2 = NSFW -->
+        <meta-data android:name="tachiyomix.contentWarning" android:value="2" />
+        <meta-data android:name="tachiyomix.extensionLib" android:value="1.6" />
+        <meta-data android:name="tachiyomi.extension.class" android:value=".PornhwaDb" />
+    </application>
+
+</manifest>
