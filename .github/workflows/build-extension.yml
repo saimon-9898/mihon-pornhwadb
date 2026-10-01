@@ -28,7 +28,7 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-35'
-        accept-android-sdk-licenses: true
+          accept-android-sdk-licenses: true
 
       - name: Build extension
         run: gradle assembleDebug --no-daemon --stacktrace
