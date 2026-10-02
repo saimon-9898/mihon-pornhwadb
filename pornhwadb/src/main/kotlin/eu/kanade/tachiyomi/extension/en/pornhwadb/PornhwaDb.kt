@@ -16,6 +16,10 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -122,9 +126,35 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
         close()
     }
 
+    /**
+     * Handles both response shapes this source can be asked to parse.
+     *
+     * A blank query is served by /pornhwa, which returns `data` as an array, while /search
+     * returns it as an object keyed by type. Tag filtering without a search term goes down
+     * the first path, so decoding both unconditionally fails on whichever shape was not used.
+     */
     override fun searchMangaParse(response: Response): MangasPage {
-        val body = response.parse<SearchResponse>()
-        return MangasPage(body.data.pornhwa.map(::toSManga), body.pagination["pornhwa"]?.hasMore ?: false)
+        val root = response.parseObject()
+        val data = root["data"] ?: return MangasPage(emptyList(), false)
+        val pagination = root["pagination"]
+
+        if (data is JsonArray) {
+            val page = pagination?.let {
+                runCatching { json.decodeFromJsonElement<PaginationDto>(it) }.getOrNull()
+            }
+            return MangasPage(
+                json.decodeFromJsonElement<List<MangaDto>>(data).map(::toSManga),
+                page?.hasMore ?: false,
+            )
+        }
+
+        val page = pagination?.let {
+            runCatching { json.decodeFromJsonElement<Map<String, PaginationDto?>>(it) }.getOrNull()
+        }
+        return MangasPage(
+            json.decodeFromJsonElement<SearchData>(data).pornhwa.map(::toSManga),
+            page?.get("pornhwa")?.hasMore ?: false,
+        )
     }
 
     // SManga.url is the web path, so the API prefix has to be added here: without it
@@ -224,17 +254,23 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
      * Mihon shows a thrown message verbatim, so a missing or wrong key says so here. The API has no
      * login, so there is nothing to sign into - a 401 is always this header.
      */
+    private fun Response.errorFor(): IOException = IOException(
+        when (code) {
+            401, 403 -> "Pornhwa DB rejected the API key (HTTP $code). Set it in the source settings."
+            429 -> "Rate limited by Pornhwa DB (HTTP 429). Try again later."
+            else -> "Pornhwa DB request failed (HTTP $code)"
+        },
+    )
+
+    private fun Response.parseObject(): JsonObject {
+        val text = body!!.string()
+        if (!isSuccessful) throw errorFor()
+        return json.parseToJsonElement(text).jsonObject
+    }
+
     private inline fun <reified T> Response.parse(): T {
         val text = body!!.string()
-        if (!isSuccessful) {
-            throw IOException(
-                when (code) {
-                    401, 403 -> "Pornhwa DB rejected the API key (HTTP $code). Set it in the source settings."
-                    429 -> "Rate limited by Pornhwa DB (HTTP 429). Try again later."
-                    else -> "Pornhwa DB request failed (HTTP $code)"
-                },
-            )
-        }
+        if (!isSuccessful) throw errorFor()
         return json.decodeFromString(text)
     }
 
@@ -291,12 +327,6 @@ private data class MangaDto(
 private data class ListResponse(
     val data: List<MangaDto>,
     val pagination: PaginationDto,
-)
-
-@Serializable
-private data class SearchResponse(
-    val data: SearchData,
-    val pagination: Map<String, PaginationDto?> = emptyMap(),
 )
 
 @Serializable
