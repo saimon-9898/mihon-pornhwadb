@@ -147,7 +147,16 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
 
     // ---- plumbing ------------------------------------------------------------------------------
 
-    private fun get(url: String) = Request.Builder().url(url).headers(headers).build()
+    /**
+     * Builds headers fresh on every call.
+     *
+     * [HttpSource.headers] is `by lazy`, so it snapshots the API key the first time it is read
+     * and never refreshes. Reading it here froze an empty key the moment the source was first
+     * browsed, and entering one in settings afterwards could not undo it. Calling
+     * [headersBuilder] per request is what makes the key in settings take effect.
+     */
+    private fun get(url: String) =
+        Request.Builder().url(url).headers(headersBuilder().build()).build()
 
     private fun pageParams(page: Int, sort: String, order: String) =
         "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
