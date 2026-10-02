@@ -10,7 +10,6 @@ android {
 
     defaultConfig {
         applicationId = "eu.kanade.tachiyomi.extension.en.pornhwadb"
-        // Mihon requires extensions to match the host app's minSdk floor.
         minSdk = 23
         targetSdk = 36
         versionCode = 1
@@ -27,9 +26,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("repo") {
+            storeFile = file("signing.jks")
+            storePassword = "pornhwa2026"
+            keyAlias = "pornhwadb"
+            keyPassword = "pornhwa2026"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Signed with the committed key whose fingerprint the repo index publishes;
+            // an unsigned release APK would be rejected by Mihon.
+            signingConfig = signingConfigs.getByName("repo")
         }
     }
 }

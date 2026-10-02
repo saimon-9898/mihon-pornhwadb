@@ -1,9 +1,12 @@
-name: Build extension APK
+name: Build and publish extension
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,8 +20,7 @@ jobs:
           java-version: '17'
 
       # No Gradle wrapper is committed: the wrapper task could not be run on the
-      # device this repo was authored on, so Gradle is installed explicitly here
-      # instead. Pinning the version keeps the build reproducible either way.
+      # device this repo was authored on, so Gradle is installed explicitly here.
       - name: Install Gradle
         run: |
           curl -sSLo gradle.zip https://services.gradle.org/distributions/gradle-8.14-bin.zip
@@ -30,11 +32,28 @@ jobs:
           packages: 'platforms;android-36'
           accept-android-sdk-licenses: true
 
-      - name: Build extension
-        run: gradle assembleDebug --no-daemon --stacktrace
+      # assembleRelease, not debug: the repo index advertises this key's fingerprint,
+      # and Mihon only trusts a matching signer.
+      - name: Build signed release APK
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      # The index.json in the repo branch points at this stable URL, so the APK has
+      # to live at a fixed location rather than a per-run artifact link.
+      - name: Publish to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1
+          name: Pornhwa DB extension 1.6.1
+          body: |
+            Pornhwa DB source for Mihon.
+
+            Auth is an `X-API-Key` header; there is no account. Enter your key in
+            Mihon under Extensions -> Pornhwa DB -> Preferences.
+          files: pornhwadb/build/outputs/apk/release/*.apk
+          fail_on_unmatched_files: true
 
       - uses: actions/upload-artifact@v4
         with:
           name: pornhwadb-extension-apk
-          path: pornhwadb/build/outputs/apk/debug/*.apk
+          path: pornhwadb/build/outputs/apk/release/*.apk
           if-no-files-found: error

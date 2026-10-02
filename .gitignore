@@ -4,3 +4,7 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+
+# signing.jks is deliberately NOT ignored. The Mihon repo index publishes this key's
+# SHA-256 fingerprint, so the key must be stable for the repo's updates to verify.
+# Anyone holding it can sign updates to this repo only.
