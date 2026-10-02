@@ -16,10 +16,6 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -76,43 +72,38 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     )
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        // Match on the generic base types, not on our own subclasses: Mihon hands the
-        // filter list back as Filter.Group / Filter.Select, so an instanceof against the
-        // subclass silently matched nothing and every filter came back empty.
+        // Match on the generic base types; Mihon hands the list back as Filter.Group /
+        // Filter.Select, and an instanceof against our own subclasses matched nothing.
         val selectedTags = filters.filterIsInstance<Filter.Group<Filter.CheckBox>>().firstOrNull()
             ?.state.orEmpty().filter { it.state == true }.map { it.name }
         // Select holds the selected *index*, not the value.
         val statusIndex = filters.filterIsInstance<Filter.Select<*>>().firstOrNull()?.state ?: 0
         val status = STATUSES.getOrNull(statusIndex)?.takeIf { it != ALL }
 
-        // /search rejects an empty q with HTTP 400, and Mihon calls search with a blank
-        // query whenever the filter sheet is used. Fall back to the browse endpoint
-        // whenever there is no text to search for, which also handles tags and status.
-        if (query.isBlank()) {
-            val url = "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
-                .addQueryParameter("page", page.toString())
-                .addQueryParameter("limit", PAGE_LIMIT.toString())
-                .addQueryParameter("sort", "average_rating")
-                .addQueryParameter("order", "desc")
-                .apply {
-                    if (selectedTags.isNotEmpty()) addQueryParameter("tags", selectedTags.joinToString(","))
-                    if (status != null) addQueryParameter("status", status)
-                }
-                .build()
-            return get(url.toString())
-        }
-
-        val url = "$baseUrl$API_PREFIX/search".toHttpUrl().newBuilder()
-            .addQueryParameter("q", query)
-            .addQueryParameter("type", "pornhwa")
+        // One endpoint for browse, search and filter alike. /pornhwa takes search, tags
+        // and status together. /search was previously used for text but it 400s on an
+        // empty q and silently ignores tags, which is why filtering did nothing.
+        val url = "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
             .addQueryParameter("page", page.toString())
             .addQueryParameter("limit", PAGE_LIMIT.toString())
+            .addQueryParameter("sort", "average_rating")
+            .addQueryParameter("order", "desc")
             .apply {
-                if (selectedTags.isNotEmpty()) addQueryParameter("tags", selectedTags.joinToString(","))
+                if (query.isNotBlank()) addQueryParameter("search", query)
+                if (selectedTags.isNotEmpty()) {
+                    addQueryParameter("tags", selectedTags.joinToString(","))
+                    // Narrowing: an entry must carry every selected tag, not just one.
+                    addQueryParameter("tagMode", "all")
+                }
                 if (status != null) addQueryParameter("status", status)
             }
             .build()
         return get(url.toString())
+    }
+
+    override fun searchMangaParse(response: Response): MangasPage {
+        val body = response.parse<ListResponse>()
+        return MangasPage(body.data.map(::toSManga), body.pagination.hasMore)
     }
 
     /** Fetched lazily so opening the filter sheet never blocks on the network. */
@@ -129,39 +120,6 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
         close()
     }
 
-    /**
-     * Handles both response shapes this source can be asked to parse.
-     *
-     * A blank query is served by /pornhwa, which returns `data` as an array, while /search
-     * returns it as an object keyed by type. Tag filtering without a search term goes down
-     * the first path, so decoding both unconditionally fails on whichever shape was not used.
-     */
-    override fun searchMangaParse(response: Response): MangasPage {
-        val root = response.parseObject()
-        val data = root["data"] ?: return MangasPage(emptyList(), false)
-        val pagination = root["pagination"]
-
-        if (data is JsonArray) {
-            val page = pagination?.let {
-                runCatching { json.decodeFromJsonElement<PaginationDto>(it) }.getOrNull()
-            }
-            return MangasPage(
-                json.decodeFromJsonElement<List<MangaDto>>(data).map(::toSManga),
-                page?.hasMore ?: false,
-            )
-        }
-
-        val page = pagination?.let {
-            runCatching { json.decodeFromJsonElement<Map<String, PaginationDto?>>(it) }.getOrNull()
-        }
-        return MangasPage(
-            json.decodeFromJsonElement<SearchData>(data).pornhwa.map(::toSManga),
-            page?.get("pornhwa")?.hasMore ?: false,
-        )
-    }
-
-    // SManga.url is the web path, so the API prefix has to be added here: without it
-    // this fetches the HTML site and JSON parsing fails on the "<".
     override fun mangaDetailsRequest(manga: SManga): Request = get("$baseUrl$API_PREFIX${manga.url}")
 
     override fun mangaDetailsParse(response: Response): SManga {
@@ -265,12 +223,6 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
         },
     )
 
-    private fun Response.parseObject(): JsonObject {
-        val text = body!!.string()
-        if (!isSuccessful) throw errorFor()
-        return json.parseToJsonElement(text).jsonObject
-    }
-
     private inline fun <reified T> Response.parse(): T {
         val text = body!!.string()
         if (!isSuccessful) throw errorFor()
@@ -330,11 +282,6 @@ private data class MangaDto(
 private data class ListResponse(
     val data: List<MangaDto>,
     val pagination: PaginationDto,
-)
-
-@Serializable
-private data class SearchData(
-    @SerialName("pornhwa") val pornhwa: List<MangaDto> = emptyList(),
 )
 
 @Serializable
