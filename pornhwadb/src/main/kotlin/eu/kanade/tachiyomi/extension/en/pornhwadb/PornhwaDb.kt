@@ -6,6 +6,7 @@ import android.text.InputType
 import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -63,14 +64,59 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
+    override fun getFilterList(): FilterList = FilterList(
+        Filter.Header("Tags"),
+        TagFilter(tags),
+        Filter.Header("Status"),
+        StatusFilter(),
+    )
+
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        val tags = filters.filterIsInstance<TagFilter>().firstOrNull()?.selected().orEmpty()
+        val status = filters.filterIsInstance<StatusFilter>().firstOrNull()?.value
+
+        // /search rejects an empty q with HTTP 400, and Mihon calls search with a blank
+        // query whenever the filter sheet is used. Fall back to the browse endpoint
+        // whenever there is no text to search for, which also handles tags and status.
+        if (query.isBlank()) {
+            val url = "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
+                .addQueryParameter("page", page.toString())
+                .addQueryParameter("limit", PAGE_LIMIT.toString())
+                .addQueryParameter("sort", "average_rating")
+                .addQueryParameter("order", "desc")
+                .apply {
+                    if (tags.isNotEmpty()) addQueryParameter("tags", tags.joinToString(","))
+                    if (status != null) addQueryParameter("status", status)
+                }
+                .build()
+            return get(url.toString())
+        }
+
         val url = "$baseUrl$API_PREFIX/search".toHttpUrl().newBuilder()
             .addQueryParameter("q", query)
             .addQueryParameter("type", "pornhwa")
             .addQueryParameter("page", page.toString())
             .addQueryParameter("limit", PAGE_LIMIT.toString())
+            .apply {
+                if (tags.isNotEmpty()) addQueryParameter("tags", tags.joinToString(","))
+                if (status != null) addQueryParameter("status", status)
+            }
             .build()
         return get(url.toString())
+    }
+
+    /** Fetched lazily so opening the filter sheet never blocks on the network. */
+    private val tags: List<String> by lazy { runCatching { fetchTags() }.getOrDefault(emptyList()) }
+
+    private fun fetchTags(): List<String> {
+        val response = client.newCall(get("$baseUrl$API_PREFIX/tags/available?type=genre")).execute()
+        return response.use { it.parse<TagListResponse>().data }
+    }
+
+    private inline fun <R> Response.use(block: (Response) -> R): R = try {
+        block(this)
+    } finally {
+        close()
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
@@ -280,3 +326,22 @@ private data class ExternalLinkDto(
     val siteName: String,
     val url: String,
 )
+@Serializable
+private data class TagListResponse(val data: List<String> = emptyList())
+
+private class TagFilter(tags: List<String>) :
+    Filter.Group<Filter.CheckBox>("Tags", emptyList()) {
+
+    init {
+        // "All" first so the default state is a real entry rather than an empty selection.
+        state = listOf(Filter.CheckBox("All", true)) +
+            tags.map { Filter.CheckBox(it, false) }
+    }
+
+    fun selected(): List<String> =
+        state.orEmpty().drop(1).filter { it.state }.map { it.name }
+}
+
+private class StatusFilter : Filter.Select<String>("Status", STATUSES, 0)
+
+private val STATUSES = arrayOf("All", "On Going", "Completed", "Hiatus")
