@@ -12,7 +12,7 @@ android {
         applicationId = "eu.kanade.tachiyomi.extension.en.pornhwadb"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
+        versionCode = 2
     }
 
     compileOptions {
@@ -46,9 +46,11 @@ android {
 }
 
 dependencies {
-    // Provided by the Mihon host app at runtime; these are compile-time stubs only.
+    // Everything is compileOnly on purpose. Mihon already ships all of this, and an
+    // extension that packaged its own copies shipped a second okhttp/okio into the host
+    // process: class loading then failed and the extension registered zero sources.
+    // Keiyoushi's extensions are ~20KB for this reason.
     compileOnly("com.github.mihonapp:tachiyomix:1.6.0")
-
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    compileOnly("com.squareup.okhttp3:okhttp:5.4.0")
 }
