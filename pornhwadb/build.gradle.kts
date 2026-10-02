@@ -12,7 +12,7 @@ android {
         applicationId = "eu.kanade.tachiyomi.extension.en.pornhwadb"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
     }
 
     compileOptions {
