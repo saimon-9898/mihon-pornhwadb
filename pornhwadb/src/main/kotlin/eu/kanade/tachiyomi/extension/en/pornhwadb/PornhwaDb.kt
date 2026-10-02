@@ -1,17 +1,17 @@
 package eu.kanade.tachiyomi.extension.en.pornhwadb
 
-import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.text.InputType
 import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import injekt.Injekt
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -29,7 +29,7 @@ import java.io.IOException
  * chapter entry here could only ever dead-end in the reader.
  *
  * Authentication is an `X-API-Key` header and nothing else; the API has no user accounts. The key is
- * entered in the source's settings and is never written to this APK.
+ * entered in the source's settings and is never compiled into this APK.
  */
 class PornhwaDb : HttpSource(), ConfigurableSource {
 
@@ -40,12 +40,8 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val prefs: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    }
-
     private val apiKey: String
-        get() = prefs.getString(PREF_API_KEY, "").orEmpty().trim()
+        get() = storage?.getString(PREF_API_KEY, null)?.trim().orEmpty()
 
     override fun headersBuilder() = super.headersBuilder().apply {
         add("X-API-Key", apiKey)
@@ -55,7 +51,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     // ---- catalogue -----------------------------------------------------------------------------
 
     override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl$API_PREFIX/pornhwa", headers, pageParams(page, "average_rating", "desc"))
+        get("$baseUrl$API_PREFIX/pornhwa", pageParams(page, "average_rating", "desc"))
 
     override fun popularMangaParse(response: Response): MangasPage {
         val body = response.parse<ListResponse>()
@@ -63,26 +59,26 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     }
 
     override fun latestUpdatesRequest(page: Int): Request =
-        GET("$baseUrl$API_PREFIX/pornhwa", headers, pageParams(page, "updated_at", "desc"))
+        get("$baseUrl$API_PREFIX/pornhwa", pageParams(page, "updated_at", "desc"))
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val params = pageParams(page, "title", "asc") {
-            addQueryParameter("q", query)
-            addQueryParameter("type", "pornhwa")
-        }
-        return GET("$baseUrl$API_PREFIX/search", headers, params)
+        val url = "$baseUrl$API_PREFIX/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query)
+            .addQueryParameter("type", "pornhwa")
+            .addQueryParameter("page", page.toString())
+            .addQueryParameter("limit", PAGE_LIMIT.toString())
+            .build()
+        return get(url.toString())
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
         val body = response.parse<SearchResponse>()
-        val page = body.pagination["pornhwa"]
-        return MangasPage(body.data.pornhwa.map(::toSManga), page?.hasMore ?: false)
+        return MangasPage(body.data.pornhwa.map(::toSManga), body.pagination["pornhwa"]?.hasMore ?: false)
     }
 
-    override fun mangaDetailsRequest(manga: SManga): Request =
-        GET(baseUrl + manga.url, headers)
+    override fun mangaDetailsRequest(manga: SManga): Request = get(baseUrl + manga.url)
 
     override fun mangaDetailsParse(response: Response): SManga {
         val dto = response.parse<DetailResponse>().data
@@ -101,30 +97,32 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
                 }
                 if (dto.externalLinks.isNotEmpty()) {
                     appendLine("Elsewhere:")
-                    dto.externalLinks.forEach { appendLine("• ${it.siteName}: ${it.url}") }
+                    dto.externalLinks.forEach { appendLine("- ${it.siteName}: ${it.url}") }
                 }
                 append(READING_UNAVAILABLE)
             }
-            // Everything the list view shows is already populated, so Mihon need not refetch.
+            // The list view already carries every field this sets, so skip a refetch.
             initialized = true
         }
     }
 
     override fun chapterListRequest(manga: SManga): Request =
-        GET(baseUrl + manga.url + "/chapters", headers, PAGE_LIMIT.toString())
+        get("$baseUrl${manga.url}/chapters?page=1&limit=$SCENES_LIMIT")
 
     // No chapters: the API has scene records, not readable pages. See the class comment.
     override fun chapterListParse(response: Response): List<SChapter> = emptyList()
 
-    override fun pageListRequest(chapter: SChapter): Request =
-        throw IOException(READING_UNAVAILABLE)
+    override fun pageListRequest(chapter: SChapter): Request = throw IOException(READING_UNAVAILABLE)
 
-    override fun pageListParse(response: Response) =
-        throw IOException(READING_UNAVAILABLE)
+    override fun pageListParse(response: Response): List<Page> = throw IOException(READING_UNAVAILABLE)
 
     // ---- settings ------------------------------------------------------------------------------
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        // The screen's context is the only handle an extension gets on the host app; hold it so
+        // headersBuilder() can read the stored key. Set once, when settings are first opened.
+        storage = screen.context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
         screen.addPreference(
             EditTextPreference(screen.context).apply {
                 key = PREF_API_KEY
@@ -136,31 +134,35 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
                     text.inputType =
                         InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                 }
+                setOnPreferenceChangeListener { _, newValue ->
+                    storage?.edit()
+                        ?.putString(PREF_API_KEY, newValue as? String)
+                        ?.apply()
+                    summary = (newValue as? String)?.trim().orEmpty().ifBlank { NOT_SET_SUMMARY }
+                    true
+                }
             },
         )
     }
 
     // ---- plumbing ------------------------------------------------------------------------------
 
-    private fun pageParams(
-        page: Int,
-        sort: String,
-        order: String,
-        extra: okhttp3.HttpUrl.Builder.() -> Unit = {},
-    ) = "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
-        .addQueryParameter("page", page.toString())
-        .addQueryParameter("limit", PAGE_LIMIT.toString())
-        .addQueryParameter("sort", sort)
-        .addQueryParameter("order", order)
-        .apply(extra)
-        .build()
+    private fun get(url: String) = Request.Builder().url(url).headers(headers).build()
+
+    private fun pageParams(page: Int, sort: String, order: String) =
+        "$baseUrl$API_PREFIX/pornhwa".toHttpUrl().newBuilder()
+            .addQueryParameter("page", page.toString())
+            .addQueryParameter("limit", PAGE_LIMIT.toString())
+            .addQueryParameter("sort", sort)
+            .addQueryParameter("order", order)
+            .build()
+            .toString()
 
     /**
      * Decodes the body, turning an HTTP error into a message that names the actual problem.
      *
-     * Mihon renders a thrown message verbatim, so a missing or wrong key says so here instead of
-     * surfacing as a generic failure. The API has no login, so there is nothing for the user to
-     * sign into - a 401 is always the header.
+     * Mihon shows a thrown message verbatim, so a missing or wrong key says so here. The API has no
+     * login, so there is nothing to sign into - a 401 is always this header.
      */
     private inline fun <reified T> Response.parse(): T {
         val text = body!!.string()
@@ -198,12 +200,16 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     companion object {
         const val API_PREFIX = "/api/v1"
         const val PAGE_LIMIT = 20
+        const val SCENES_LIMIT = 50
         const val PREF_API_KEY = "pornhwadb_api_key"
         const val NOT_SET_SUMMARY = "Not set - every request will fail with HTTP 401"
         const val READING_UNAVAILABLE =
             "This catalogue does not host chapter images, so there is nothing to read here."
 
         private const val PREFS = "pornhwadb_extension"
+
+        @Volatile
+        private var storage: SharedPreferences? = null
     }
 }
 
