@@ -13,12 +13,12 @@
         "name": "Pornhwa DB",
         "packageName": "eu.kanade.tachiyomi.extension.en.pornhwadb",
         "resources": {
-          "apkUrl": "https://github.com/saimon-9898/mihon-pornhwadb/releases/download/v9/pornhwadb-release.apk",
+          "apkUrl": "https://github.com/saimon-9898/mihon-pornhwadb/releases/download/v10/pornhwadb-release.apk",
           "iconUrl": "https://raw.githubusercontent.com/saimon-9898/mihon-pornhwadb/repo/icon/eu.kanade.tachiyomi.extension.en.pornhwadb.png"
         },
         "extensionLib": "1.6",
-        "versionCode": "9",
-        "versionName": "1.6.9",
+        "versionCode": "10",
+        "versionName": "1.6.10",
         "contentWarning": "CONTENT_WARNING_NSFW",
         "sources": [
           {
