@@ -76,10 +76,13 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     )
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        // Match on the generic base types, not on our own subclasses: Mihon hands the
+        // filter list back as Filter.Group / Filter.Select, so an instanceof against the
+        // subclass silently matched nothing and every filter came back empty.
+        val selectedTags = filters.filterIsInstance<Filter.Group<Filter.CheckBox>>().firstOrNull()
+            ?.state.orEmpty().filter { it.state == true }.map { it.name }
         // Select holds the selected *index*, not the value.
-        val selectedTags = filters.filterIsInstance<TagGroup>().firstOrNull()
-            ?.state.orEmpty().drop(1).filter { it.state == true }.map { it.name }
-        val statusIndex = filters.filterIsInstance<StatusSelect>().firstOrNull()?.state ?: 0
+        val statusIndex = filters.filterIsInstance<Filter.Select<*>>().firstOrNull()?.state ?: 0
         val status = STATUSES.getOrNull(statusIndex)?.takeIf { it != ALL }
 
         // /search rejects an empty q with HTTP 400, and Mihon calls search with a blank
@@ -371,8 +374,9 @@ private class TagCheckBox(name: String, checked: Boolean = false) :
 private class TagGroup(tags: List<String>) : Filter.Group<Filter.CheckBox>("Tags", emptyList()) {
 
     init {
-        // A leading "All" keeps the default a real entry instead of an empty selection.
-        state = listOf(TagCheckBox(ALL, true)) + tags.map { TagCheckBox(it) }
+        // No leading "All": an unchecked list already means no tag constraint, and a
+        // sentinel entry would have to be special-cased on the way out.
+        state = tags.map { TagCheckBox(it) }
     }
 }
 
