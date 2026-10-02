@@ -51,7 +51,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     // ---- catalogue -----------------------------------------------------------------------------
 
     override fun popularMangaRequest(page: Int): Request =
-        get("$baseUrl$API_PREFIX/pornhwa", pageParams(page, "average_rating", "desc"))
+        get(pageParams(page, "average_rating", "desc"))
 
     override fun popularMangaParse(response: Response): MangasPage {
         val body = response.parse<ListResponse>()
@@ -59,7 +59,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     }
 
     override fun latestUpdatesRequest(page: Int): Request =
-        get("$baseUrl$API_PREFIX/pornhwa", pageParams(page, "updated_at", "desc"))
+        get(pageParams(page, "updated_at", "desc"))
 
     override fun latestUpdatesParse(response: Response): MangasPage = popularMangaParse(response)
 
