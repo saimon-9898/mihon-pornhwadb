@@ -12,7 +12,11 @@ android {
         applicationId = "eu.kanade.tachiyomi.extension.en.pornhwadb"
         minSdk = 23
         targetSdk = 36
-        versionCode = 3
+        versionCode = 4
+        // Mihon derives the extension lib version from versionName when it cannot read
+        // tachiyomix.extensionLib as a float, and rejects anything outside [1.4, 1.6].
+        // Leaving this unset defaults to "1.0" and the extension loads with zero sources.
+        versionName = "1.6.4"
     }
 
     compileOptions {
