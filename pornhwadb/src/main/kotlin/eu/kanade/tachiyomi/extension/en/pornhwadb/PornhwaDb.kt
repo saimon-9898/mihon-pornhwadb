@@ -66,14 +66,17 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
 
     override fun getFilterList(): FilterList = FilterList(
         Filter.Header("Tags"),
-        TagFilter(tags),
+        TagGroup(tags),
         Filter.Header("Status"),
-        StatusFilter(),
+        StatusSelect("Status", STATUSES),
     )
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val tags = filters.filterIsInstance<TagFilter>().firstOrNull()?.selected().orEmpty()
-        val status = filters.filterIsInstance<StatusFilter>().firstOrNull()?.value
+        // Select holds the selected *index*, not the value.
+        val selectedTags = filters.filterIsInstance<TagGroup>().firstOrNull()
+            ?.state.orEmpty().drop(1).filter { it.state == true }.map { it.name }
+        val statusIndex = filters.filterIsInstance<StatusSelect>().firstOrNull()?.state ?: 0
+        val status = STATUSES.getOrNull(statusIndex)?.takeIf { it != ALL }
 
         // /search rejects an empty q with HTTP 400, and Mihon calls search with a blank
         // query whenever the filter sheet is used. Fall back to the browse endpoint
@@ -85,7 +88,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
                 .addQueryParameter("sort", "average_rating")
                 .addQueryParameter("order", "desc")
                 .apply {
-                    if (tags.isNotEmpty()) addQueryParameter("tags", tags.joinToString(","))
+                    if (selectedTags.isNotEmpty()) addQueryParameter("tags", selectedTags.joinToString(","))
                     if (status != null) addQueryParameter("status", status)
                 }
                 .build()
@@ -98,7 +101,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
             .addQueryParameter("page", page.toString())
             .addQueryParameter("limit", PAGE_LIMIT.toString())
             .apply {
-                if (tags.isNotEmpty()) addQueryParameter("tags", tags.joinToString(","))
+                if (selectedTags.isNotEmpty()) addQueryParameter("tags", selectedTags.joinToString(","))
                 if (status != null) addQueryParameter("status", status)
             }
             .build()
@@ -329,19 +332,23 @@ private data class ExternalLinkDto(
 @Serializable
 private data class TagListResponse(val data: List<String> = emptyList())
 
-private class TagFilter(tags: List<String>) :
-    Filter.Group<Filter.CheckBox>("Tags", emptyList()) {
+// The published tachiyomix AAR declares CheckBox, Select and Group as abstract
+// (KMP stubs), so they cannot be instantiated directly. Subclassing them compiles
+// and resolves to the host's concrete implementation at runtime.
+private class TagCheckBox(name: String, checked: Boolean = false) :
+    Filter.CheckBox(name, checked)
+
+private class TagGroup(tags: List<String>) : Filter.Group<Filter.CheckBox>("Tags", emptyList()) {
 
     init {
-        // "All" first so the default state is a real entry rather than an empty selection.
-        state = listOf(Filter.CheckBox("All", true)) +
-            tags.map { Filter.CheckBox(it, false) }
+        // A leading "All" keeps the default a real entry instead of an empty selection.
+        state = listOf(TagCheckBox(ALL, true)) + tags.map { TagCheckBox(it) }
     }
-
-    fun selected(): List<String> =
-        state.orEmpty().drop(1).filter { it.state }.map { it.name }
 }
 
-private class StatusFilter : Filter.Select<String>("Status", STATUSES, 0)
+private class StatusSelect(name: String, values: Array<String>) :
+    Filter.Select<String>(name, values, 0)
 
-private val STATUSES = arrayOf("All", "On Going", "Completed", "Hiatus")
+private const val ALL = "All"
+
+private val STATUSES = arrayOf(ALL, "On Going", "Completed", "Hiatus")
