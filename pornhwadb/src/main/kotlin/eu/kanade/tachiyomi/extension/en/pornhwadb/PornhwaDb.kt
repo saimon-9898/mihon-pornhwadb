@@ -78,7 +78,9 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
         return MangasPage(body.data.pornhwa.map(::toSManga), body.pagination["pornhwa"]?.hasMore ?: false)
     }
 
-    override fun mangaDetailsRequest(manga: SManga): Request = get(baseUrl + manga.url)
+    // SManga.url is the web path, so the API prefix has to be added here: without it
+    // this fetches the HTML site and JSON parsing fails on the "<".
+    override fun mangaDetailsRequest(manga: SManga): Request = get("$baseUrl$API_PREFIX${manga.url}")
 
     override fun mangaDetailsParse(response: Response): SManga {
         val dto = response.parse<DetailResponse>().data
@@ -107,7 +109,7 @@ class PornhwaDb : HttpSource(), ConfigurableSource {
     }
 
     override fun chapterListRequest(manga: SManga): Request =
-        get("$baseUrl${manga.url}/chapters?page=1&limit=$SCENES_LIMIT")
+        get("$baseUrl$API_PREFIX${manga.url}/chapters?page=1&limit=$SCENES_LIMIT")
 
     // No chapters: the API has scene records, not readable pages. See the class comment.
     override fun chapterListParse(response: Response): List<SChapter> = emptyList()
