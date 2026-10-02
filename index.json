@@ -1,0 +1,34 @@
+{
+  "name": "Pornhwa DB",
+  "badgeLabel": "PD",
+  "signingKey": "5f6a4015179811af16f1bbd545fd40d9829cd334407038612b95633b3c0effd5",
+  "contact": {
+    "website": "https://github.com/saimon-9898/mihon-pornhwadb",
+    "sourceCode": "https://github.com/saimon-9898/mihon-pornhwadb",
+    "issues": "https://github.com/saimon-9898/mihon-pornhwadb/issues"
+  },
+  "extensionList": {
+    "extensions": [
+      {
+        "name": "Pornhwa DB",
+        "packageName": "eu.kanade.tachiyomi.extension.en.pornhwadb",
+        "resources": {
+          "apkUrl": "https://github.com/saimon-9898/mihon-pornhwadb/releases/download/v1/pornhwadb-release.apk",
+          "iconUrl": "https://raw.githubusercontent.com/saimon-9898/mihon-pornhwadb/repo/icon/eu.kanade.tachiyomi.extension.en.pornhwadb.png"
+        },
+        "extensionLib": "1.6",
+        "versionCode": "1",
+        "versionName": "1.6.1",
+        "contentWarning": "CONTENT_WARNING_NSFW",
+        "sources": [
+          {
+            "id": "1",
+            "name": "Pornhwa DB",
+            "language": "en",
+            "homeUrl": "https://pornhwadb.com"
+          }
+        ]
+      }
+    ]
+  }
+}
